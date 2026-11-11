@@ -1,0 +1,22 @@
+{
+  "_help": "Edit this file on GitHub to change what counts as Fireworks / Military. Rules are checked top to bottom; the first match decides the NOTAM type. Anything that matches no rule is type 'other'. Each rule sends alerts to the ntfy topic held in the GitHub secret named in 'topic_secret'.",
+  "firs": ["YMMM", "YBBB"],
+  "alert_kinds": ["N", "R"],
+  "max_alerts_per_rule_per_run": 10,
+  "rules": [
+    {
+      "id": "fireworks",
+      "label": "Fireworks",
+      "topic_secret": "NTFY_TOPIC_FIREWORKS",
+      "keywords": ["FIREWORKS?", "PYROTECHNICS?", "FIRE WORKS", "FIREWORK DISPLAY"],
+      "q_subjects": []
+    },
+    {
+      "id": "military",
+      "label": "Military",
+      "topic_secret": "NTFY_TOPIC_MILITARY",
+      "keywords": ["MIL", "MILITARY", "RAAF", "ARMY", "NAVY", "NAVAL", "RAN", "ADF", "EXERCISE", "LIVE FIRING", "LIVE FIRE", "GUNNERY", "WEAPONS?", "MISSILE", "DANGER AREA", "RESTRICTED AREA"],
+      "q_subjects": ["WE", "WM"]
+    }
+  ]
+}

@@ -1,0 +1,370 @@
+<!doctype html>
+<html lang="en-AU">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>NOTAM Watch</title>
+<meta name="description" content="Current NOTAMs for the Melbourne (YMMM) and Brisbane (YBBB) FIRs, with fireworks and military filters.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230f1419'/%3E%3Cpath d='M16 5l11 20H5z' fill='none' stroke='%23ff6a45' stroke-width='2.5' stroke-linejoin='round'/%3E%3Cpath d='M16 13v6' stroke='%23ff6a45' stroke-width='2.5' stroke-linecap='round'/%3E%3Ccircle cx='16' cy='22' r='1.3' fill='%23ff6a45'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#f4f1ec; --panel:#ffffff; --panel2:#efebe4; --line:#d9d3c8; --text:#1d2328; --muted:#5d666e;
+  --accent:#c8381a; --accent-ink:#ffffff;
+  --fw:#b4236b; --mil:#2c5fa8; --oth:#5d666e;
+  --st-active:#1f7a3d; --st-upcoming:#8a5a00; --st-expired:#6b7178; --st-replaced:#6b4fa0; --st-cancelled:#a02828;
+  --shadow:0 1px 2px rgba(0,0,0,.06),0 4px 14px rgba(0,0,0,.05);
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#0f1419; --panel:#171d24; --panel2:#1e262f; --line:#2a333d; --text:#e7ebef; --muted:#9aa4ae;
+    --accent:#ff6a45; --accent-ink:#1a0d08;
+    --fw:#ff7ab8; --mil:#7fb1ff; --oth:#9aa4ae;
+    --st-active:#5fd48a; --st-upcoming:#f0b84a; --st-expired:#8b949e; --st-replaced:#b79cff; --st-cancelled:#ff8080;
+    --shadow:0 1px 2px rgba(0,0,0,.4),0 6px 18px rgba(0,0,0,.25);
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0f1419; --panel:#171d24; --panel2:#1e262f; --line:#2a333d; --text:#e7ebef; --muted:#9aa4ae;
+  --accent:#ff6a45; --accent-ink:#1a0d08;
+  --fw:#ff7ab8; --mil:#7fb1ff; --oth:#9aa4ae;
+  --st-active:#5fd48a; --st-upcoming:#f0b84a; --st-expired:#8b949e; --st-replaced:#b79cff; --st-cancelled:#ff8080;
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 6px 18px rgba(0,0,0,.25);
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--text);font:15px/1.45 "IBM Plex Sans",system-ui,-apple-system,sans-serif;min-height:100vh}
+.wrap{max-width:1100px;margin:0 auto;padding:0 16px calc(32px + env(safe-area-inset-bottom))}
+header{padding:calc(18px + env(safe-area-inset-top)) 0 10px;display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap}
+h1{font:700 30px/1 "Barlow Condensed",sans-serif;letter-spacing:.02em;text-transform:uppercase;margin:0}
+h1 span{color:var(--accent)}
+.meta{color:var(--muted);font-size:13px}
+.theme{background:none;border:1px solid var(--line);color:var(--muted);border-radius:8px;padding:5px 10px;font:inherit;font-size:12px;cursor:pointer}
+.banner{margin:8px 0;padding:10px 12px;border-radius:10px;border:1px solid var(--st-upcoming);background:var(--panel);font-size:14px}
+.banner.bad{border-color:var(--st-cancelled)}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px;box-shadow:var(--shadow)}
+.filters{display:grid;gap:10px;margin:10px 0 14px}
+.row{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.row .lbl{font:600 12px "Barlow Condensed",sans-serif;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);min-width:46px}
+.chip{border:1px solid var(--line);background:var(--panel2);color:var(--text);border-radius:999px;padding:6px 12px;font:500 13px "IBM Plex Sans",sans-serif;cursor:pointer;display:inline-flex;gap:6px;align-items:center;min-height:34px}
+.chip .n{color:var(--muted);font-variant-numeric:tabular-nums;font-size:12px}
+.chip[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.chip[aria-pressed="true"] .n{color:inherit;opacity:.8}
+.chip:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,.card:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.search{display:flex;gap:8px;flex-wrap:wrap}
+.search input{flex:1 1 220px;min-height:40px;border-radius:10px;border:1px solid var(--line);background:var(--panel2);color:var(--text);padding:8px 12px;font:inherit;font-size:16px}
+.search select{min-height:40px;border-radius:10px;border:1px solid var(--line);background:var(--panel2);color:var(--text);padding:6px 10px;font:inherit;font-size:14px}
+.linkbtn{background:none;border:0;color:var(--accent);cursor:pointer;font:inherit;font-size:13px;padding:6px}
+.count{color:var(--muted);font-size:13px;margin:2px 2px 8px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(310px,1fr));gap:10px}
+.card{display:block;width:100%;text-align:left;background:var(--panel);border:1px solid var(--line);border-left:4px solid var(--oth);border-radius:12px;padding:11px 12px;color:inherit;font:inherit;cursor:pointer;box-shadow:var(--shadow)}
+.card[data-type="fireworks"]{border-left-color:var(--fw)}
+.card[data-type="military"]{border-left-color:var(--mil)}
+.card:hover{border-color:var(--accent)}
+.card.dim{opacity:.7}
+.top{display:flex;justify-content:space-between;gap:8px;align-items:baseline}
+.id{font:600 18px "Barlow Condensed",sans-serif;letter-spacing:.03em}
+.tags{display:flex;gap:5px;flex-wrap:wrap;margin:5px 0 6px}
+.tag{font:600 11px "IBM Plex Sans",sans-serif;text-transform:uppercase;letter-spacing:.05em;border-radius:6px;padding:2px 7px;border:1px solid currentColor}
+.tag.fireworks{color:var(--fw)}.tag.military{color:var(--mil)}.tag.other{color:var(--oth)}
+.tag.fir{color:var(--muted)}
+.tag.active{color:var(--st-active)}.tag.upcoming{color:var(--st-upcoming)}.tag.expired{color:var(--st-expired)}.tag.replaced{color:var(--st-replaced)}.tag.cancelled{color:var(--st-cancelled)}
+.when{font-size:13px;color:var(--muted)}
+.when b{color:var(--text);font-weight:500}
+.txt{margin:6px 0 0;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;font-size:14px;overflow-wrap:anywhere}
+.empty{padding:30px 10px;text-align:center;color:var(--muted)}
+dialog{border:1px solid var(--line);border-radius:16px;background:var(--panel);color:var(--text);padding:0;width:min(680px,calc(100vw - 20px));max-height:calc(100dvh - 24px);box-shadow:0 20px 60px rgba(0,0,0,.45)}
+dialog::backdrop{background:rgba(0,0,0,.55)}
+.dhead{display:flex;justify-content:space-between;align-items:center;padding:12px 14px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--panel)}
+.dbody{padding:12px 14px 16px;overflow:auto;max-height:calc(100dvh - 90px)}
+.dl{display:grid;grid-template-columns:90px 1fr;gap:4px 10px;font-size:14px;margin:8px 0 12px}
+.dl dt{color:var(--muted)}.dl dd{margin:0;overflow-wrap:anywhere}
+pre{margin:0;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:10px;font:13px/1.5 "IBM Plex Mono",ui-monospace,monospace;white-space:pre-wrap;overflow-wrap:anywhere}
+.btn{border:1px solid var(--line);background:var(--panel2);color:var(--text);border-radius:8px;padding:7px 12px;font:inherit;font-size:13px;cursor:pointer;min-height:36px}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.link{color:var(--accent);cursor:pointer;background:none;border:0;padding:0;font:inherit;text-decoration:underline}
+footer{margin-top:24px;color:var(--muted);font-size:12px;line-height:1.5}
+@media (max-width:520px){h1{font-size:26px}.row .lbl{min-width:100%}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>NOTAM <span>Watch</span></h1>
+      <div class="meta" id="meta">Loading…</div>
+    </div>
+    <button class="theme" id="theme" type="button" aria-label="Switch light or dark theme">Theme</button>
+  </header>
+
+  <div id="banner"></div>
+
+  <section class="panel filters" aria-label="Filters">
+    <div class="row" id="f-fir"><span class="lbl">FIR</span></div>
+    <div class="row" id="f-type"><span class="lbl">Type</span></div>
+    <div class="row" id="f-state"><span class="lbl">State</span></div>
+    <div class="search">
+      <input id="q" type="search" placeholder="Search text, ID, location…" autocomplete="off" enterkeyhint="search" aria-label="Search NOTAMs">
+      <select id="sort" aria-label="Sort order">
+        <option value="start">Start time (soonest first)</option>
+        <option value="end">Ends soonest</option>
+        <option value="id">NOTAM number</option>
+      </select>
+      <button class="linkbtn" id="reset" type="button">Reset filters</button>
+    </div>
+  </section>
+
+  <div class="count" id="count" aria-live="polite"></div>
+  <main class="grid" id="grid"></main>
+
+  <footer>
+    Unofficial. Information only — not for flight planning or any operational use. NOTAMs are sourced from Airservices Australia NAIPS, can be wrong or out of date here, and the official briefing is the only authoritative source.
+    Times are Australia/Sydney local time; raw NOTAMs are in UTC.
+  </footer>
+</div>
+
+<dialog id="dlg" aria-labelledby="dtitle">
+  <div class="dhead">
+    <strong id="dtitle" style="font:600 20px 'Barlow Condensed',sans-serif;letter-spacing:.03em"></strong>
+    <button class="btn" id="dclose" type="button">Close</button>
+  </div>
+  <div class="dbody" id="dbody"></div>
+</dialog>
+
+<script>
+(function(){
+'use strict';
+var TZ='Australia/Sydney';
+var TYPES=[['fireworks','Fireworks'],['military','Military'],['other','Other']];
+var STATES=[['active','Active now'],['upcoming','Upcoming'],['expired','Expired'],['replaced','Replaced'],['cancelled','Cancelled']];
+var DEFAULTS={fir:null,type:['fireworks','military','other'],state:['active','upcoming'],q:'',sort:'start'};
+var data=null, items=[], sel={};
+
+function $(id){return document.getElementById(id)}
+function el(tag,cls,text){var e=document.createElement(tag);if(cls)e.className=cls;if(text!=null)e.textContent=text;return e}
+function lsGet(k){try{return localStorage.getItem(k)}catch(e){return null}}
+function lsSet(k,v){try{localStorage.setItem(k,v)}catch(e){}}
+
+/* ---- theme ---- */
+function applyTheme(t){if(t)document.documentElement.setAttribute('data-theme',t);else document.documentElement.removeAttribute('data-theme')}
+applyTheme(lsGet('nw-theme'));
+$('theme').onclick=function(){
+  var cur=document.documentElement.getAttribute('data-theme');
+  var dark=cur?cur==='dark':window.matchMedia('(prefers-color-scheme: dark)').matches;
+  var next=dark?'light':'dark';applyTheme(next);lsSet('nw-theme',next);
+};
+
+/* ---- time ---- */
+function parseZ(s){return s?new Date(s.replace(/Z$/,':00Z')):null}
+var fmtFull=new Intl.DateTimeFormat('en-AU',{timeZone:TZ,weekday:'short',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit',hourCycle:'h23',timeZoneName:'short'});
+var fmtYear=new Intl.DateTimeFormat('en-AU',{timeZone:TZ,weekday:'short',day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit',hourCycle:'h23',timeZoneName:'short'});
+var curYear=new Intl.DateTimeFormat('en-AU',{timeZone:TZ,year:'numeric'}).format(new Date());
+function syd(d){
+  if(!d)return '—';
+  var y=new Intl.DateTimeFormat('en-AU',{timeZone:TZ,year:'numeric'}).format(d);
+  return (y===curYear?fmtFull:fmtYear).format(d).replace(/,/g,'');
+}
+function utcStr(s){return s?s.replace('T',' ').replace('Z',' UTC'):'—'}
+
+/* ---- state (computed in the browser so it stays right between data refreshes) ---- */
+function stateOf(r,now){
+  if(r.cancelled_by)return 'cancelled';
+  if(r.replaced_by)return 'replaced';
+  var s=parseZ(r.start),e=parseZ(r.end);
+  if(e&&now>e)return 'expired';
+  if(s&&now<s)return 'upcoming';
+  return 'active';
+}
+
+/* ---- selection / URL hash ---- */
+function loadSel(){
+  var s={fir:null,type:DEFAULTS.type.slice(),state:DEFAULTS.state.slice(),q:'',sort:'start'};
+  try{
+    var p=new URLSearchParams(location.hash.replace(/^#\??/,''));
+    ['fir','type','state'].forEach(function(k){if(p.has(k))s[k]=p.get(k)?p.get(k).split(','):[]});
+    if(p.has('q'))s.q=p.get('q');
+    if(p.has('sort'))s.sort=p.get('sort');
+  }catch(e){}
+  return s;
+}
+function saveSel(keepOpen){
+  var p=new URLSearchParams();
+  if(sel.fir)p.set('fir',sel.fir.join(','));
+  if(sel.type.join()!==DEFAULTS.type.join())p.set('type',sel.type.join(','));
+  if(sel.state.join()!==DEFAULTS.state.join())p.set('state',sel.state.join(','));
+  if(sel.q)p.set('q',sel.q);
+  if(sel.sort!=='start')p.set('sort',sel.sort);
+  var open=keepOpen||'';
+  var h=p.toString();
+  history.replaceState(null,'',location.pathname+location.search+(h?'#'+h:''));
+}
+function toggle(list,v){var i=list.indexOf(v);if(i>=0)list.splice(i,1);else list.push(v)}
+
+/* ---- filters UI ---- */
+function chip(parent,label,n,pressed,onclick){
+  var b=el('button','chip');b.type='button';b.setAttribute('aria-pressed',pressed?'true':'false');
+  b.appendChild(document.createTextNode(label));
+  var c=el('span','n',String(n));b.appendChild(c);
+  b.onclick=onclick;parent.appendChild(b);
+}
+function clearChips(row){var l=row.querySelector('.lbl');row.textContent='';row.appendChild(l)}
+
+function render(){
+  var now=new Date();
+  var firs=Array.from(new Set(items.map(function(r){return r.fir||'?'}))).sort();
+  if(!sel.fir)sel.fir=firs.slice();
+  var q=sel.q.trim().toLowerCase();
+
+  function pass(r,skip){
+    var st=r._state;
+    if(skip!=='fir'&&sel.fir.indexOf(r.fir||'?')<0)return false;
+    if(skip!=='type'&&sel.type.indexOf(r.type)<0)return false;
+    if(skip!=='state'&&sel.state.indexOf(st)<0)return false;
+    if(q&&r._hay.indexOf(q)<0)return false;
+    return true;
+  }
+  items.forEach(function(r){r._state=stateOf(r,now)});
+
+  var rf=$('f-fir');clearChips(rf);
+  firs.forEach(function(f){var n=items.filter(function(r){return (r.fir||'?')===f&&pass(r,'fir')}).length;
+    chip(rf,f,n,sel.fir.indexOf(f)>=0,function(){toggle(sel.fir,f);saveSel();render()})});
+  var rt=$('f-type');clearChips(rt);
+  TYPES.forEach(function(t){var n=items.filter(function(r){return r.type===t[0]&&pass(r,'type')}).length;
+    chip(rt,t[1],n,sel.type.indexOf(t[0])>=0,function(){toggle(sel.type,t[0]);saveSel();render()})});
+  var rs=$('f-state');clearChips(rs);
+  STATES.forEach(function(s){var n=items.filter(function(r){return r._state===s[0]&&pass(r,'state')}).length;
+    chip(rs,s[1],n,sel.state.indexOf(s[0])>=0,function(){toggle(sel.state,s[0]);saveSel();render()})});
+
+  var list=items.filter(function(r){return pass(r)});
+  var far=8640000000000000;
+  var key={
+    start:function(r){var d=parseZ(r.start);return d?d.getTime():far},
+    end:function(r){var d=parseZ(r.end);return d?d.getTime():far},
+    id:function(r){return r.id}
+  }[sel.sort]||function(r){return r.id};
+  list.sort(function(a,b){var x=key(a),y=key(b);return x<y?-1:x>y?1:(a.id<b.id?-1:1)});
+
+  $('count').textContent=list.length+' of '+items.length+' NOTAMs shown';
+  var g=$('grid');g.textContent='';
+  if(!list.length){g.appendChild(el('div','empty','No NOTAMs match these filters.'));return}
+  list.forEach(function(r){g.appendChild(card(r))});
+}
+
+function tag(cls,text){return el('span','tag '+cls,text)}
+function typeLabel(t){return (TYPES.filter(function(x){return x[0]===t})[0]||[0,'Other'])[1]}
+function stateLabel(s){return (STATES.filter(function(x){return x[0]===s})[0]||[0,s])[1]}
+
+function card(r){
+  var b=el('button','card'+((r._state==='expired'||r._state==='replaced'||r._state==='cancelled')?' dim':''));
+  b.type='button';b.setAttribute('data-type',r.type);
+  var top=el('div','top');top.appendChild(el('span','id',r.id));
+  top.appendChild(el('span','when',r.location||''));b.appendChild(top);
+  var tags=el('div','tags');
+  tags.appendChild(tag(r.type,typeLabel(r.type)));
+  tags.appendChild(tag('fir',r.fir||'?'));
+  tags.appendChild(tag(r._state,stateLabel(r._state)));
+  if(r.kind==='R')tags.appendChild(tag('other','Replacement'));
+  if(r.kind==='C')tags.appendChild(tag('other','Cancel'));
+  b.appendChild(tags);
+  var w=el('div','when');
+  var f=el('b',null,syd(parseZ(r.start)));
+  w.appendChild(f);w.appendChild(document.createTextNode(' → '));
+  w.appendChild(el('b',null,r.perm?'Permanent':syd(parseZ(r.end))+(r.estimated?' (est)':'')));
+  b.appendChild(w);
+  b.appendChild(el('p','txt',r.text||r.raw));
+  b.onclick=function(){openDetail(r.id,true)};
+  return b;
+}
+
+/* ---- detail ---- */
+var byId={};
+function openDetail(id,push){
+  var r=byId[id];if(!r)return;
+  $('dtitle').textContent=r.id;
+  var body=$('dbody');body.textContent='';
+  var tags=el('div','tags');
+  tags.appendChild(tag(r.type,typeLabel(r.type)));tags.appendChild(tag('fir',r.fir||'?'));
+  tags.appendChild(tag(stateOf(r,new Date()),stateLabel(stateOf(r,new Date()))));
+  body.appendChild(tags);
+  var dl=el('dl','dl');
+  function row(k,v){dl.appendChild(el('dt',null,k));var d=el('dd');if(v&&v.nodeType)d.appendChild(v);else d.textContent=v==null||v===''?'—':v;dl.appendChild(d)}
+  row('From',syd(parseZ(r.start))+'  ('+utcStr(r.start)+')');
+  row('To',r.perm?'Permanent':syd(parseZ(r.end))+(r.estimated?' (estimated)':'')+'  ('+utcStr(r.end)+')');
+  row('Location',r.location);
+  if(r.schedule)row('Schedule (UTC)',r.schedule);
+  if(r.lower||r.upper)row('Levels',(r.lower||'?')+' to '+(r.upper||'?'));
+  function lk(other,prefix){var s=document.createElement('span');s.appendChild(document.createTextNode(prefix||''));
+    if(byId[other]){var a=el('button','link',other);a.type='button';a.onclick=function(){openDetail(other,true)};s.appendChild(a)}else s.appendChild(document.createTextNode(other));return s}
+  if(r.ref)row(r.kind==='C'?'Cancels':'Replaces',lk(r.ref));
+  if(r.replaced_by)row('Replaced by',lk(r.replaced_by));
+  if(r.cancelled_by)row('Cancelled by',lk(r.cancelled_by));
+  row('First seen',syd(parseZ(r.first_seen)));
+  body.appendChild(dl);
+  body.appendChild(el('div','lbl',''));
+  var pre=el('pre',null,r.raw);body.appendChild(pre);
+  var act=el('div','row');act.style.marginTop='10px';
+  var cp=el('button','btn primary','Copy raw NOTAM');cp.type='button';
+  cp.onclick=function(){
+    function done(){cp.textContent='Copied';setTimeout(function(){cp.textContent='Copy raw NOTAM'},1500)}
+    if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(r.raw).then(done,function(){selectText(pre)});else selectText(pre);
+  };
+  act.appendChild(cp);body.appendChild(act);
+  var d=$('dlg');
+  if(!d.open){if(d.showModal)d.showModal();else d.setAttribute('open','')}
+  body.scrollTop=0;
+  if(push)try{history.replaceState(null,'',location.pathname+location.search+location.hash.replace(/[#&]?open=[^&]*/,'')+(location.hash.length>1?'&':'#')+'open='+encodeURIComponent(r.id))}catch(e){}
+}
+function selectText(node){var s=window.getSelection(),rg=document.createRange();rg.selectNodeContents(node);s.removeAllRanges();s.addRange(rg)}
+function closeDetail(){
+  var d=$('dlg');if(d.open)d.close();
+  try{history.replaceState(null,'',location.pathname+location.search+location.hash.replace(/[#&]?open=[^&]*/,'').replace(/^#$/,''))}catch(e){}
+}
+$('dclose').onclick=closeDetail;
+$('dlg').addEventListener('click',function(e){if(e.target===$('dlg'))closeDetail()});
+$('dlg').addEventListener('cancel',function(){setTimeout(closeDetail,0)});
+
+/* ---- boot ---- */
+function banner(d){
+  var b=$('banner');b.textContent='';
+  var gen=parseZ(d.generated_at),ok=parseZ(d.last_success);
+  var ageH=ok?(Date.now()-ok.getTime())/3600000:999;
+  if(!d.source_ok||ageH>3){
+    var x=el('div','banner bad');
+    x.textContent=ok?'Data may be out of date: the last successful update from NAIPS was '+syd(ok)+'.':'No successful update from NAIPS yet.';
+    b.appendChild(x);
+  }else if(!d.seeded){
+    b.appendChild(el('div','banner','First run has not completed yet.'));
+  }
+}
+function boot(d){
+  data=d;items=d.notams||[];
+  items.forEach(function(r){
+    byId[r.id]=r;
+    r._hay=[r.id,r.location,r.text,r.schedule,r.fir,r.ref,r.raw].join(' ').toLowerCase();
+  });
+  var ok=parseZ(d.last_success);
+  $('meta').textContent=(ok?'Updated '+syd(ok):'Not yet updated')+' · '+items.length+' NOTAMs · YMMM / YBBB';
+  banner(d);
+  sel=loadSel();$('q').value=sel.q;$('sort').value=sel.sort;
+  render();
+  try{var o=new URLSearchParams(location.hash.replace(/^#\??/,'')).get('open');if(o&&byId[o])openDetail(o,false)}catch(e){}
+}
+var t;
+$('q').addEventListener('input',function(){clearTimeout(t);var v=this.value;t=setTimeout(function(){sel.q=v;saveSel();render()},120)});
+$('sort').onchange=function(){sel.sort=this.value;saveSel();render()};
+$('reset').onclick=function(){sel={fir:null,type:DEFAULTS.type.slice(),state:DEFAULTS.state.slice(),q:'',sort:'start'};$('q').value='';$('sort').value='start';saveSel();render()};
+setInterval(function(){if(data)render()},5*60000);
+
+fetch('data/notams.json?t='+Math.floor(Date.now()/60000),{cache:'no-store'})
+  .then(function(r){if(!r.ok)throw new Error(r.status);return r.json()})
+  .then(boot)
+  .catch(function(){$('meta').textContent='Could not load data.';$('grid').appendChild(el('div','empty','Could not load NOTAM data. Try again shortly.'))});
+})();
+</script>
+</body>
+</html>

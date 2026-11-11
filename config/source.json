@@ -1,0 +1,15 @@
+{
+  "_help": "How the NAIPS briefing request is built. If NAIPS rejects the codes, run the 'Probe NAIPS' workflow and send the result back; this file is the only thing that should need changing.",
+  "operation": "loc-brief",
+  "loc": ["YMMM", "YBBB"],
+  "duration": "PT336H",
+  "source_label": "notam-watch",
+  "flags": { "met": false, "ntm": true, "hon": true, "charts": false },
+  "wsdl": "https://www.airservicesaustralia.com/naips/briefing-service?wsdl",
+  "probe_alternatives": [
+    ["YMMM", "YBBB"],
+    ["YMMM"],
+    ["YBBB"],
+    ["7400"]
+  ]
+}
