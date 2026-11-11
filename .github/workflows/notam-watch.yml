@@ -1,0 +1,99 @@
+name: Fetch NOTAMs, send alerts and publish site
+
+on:
+  push:
+    branches: [main]
+    paths: ["site/**", "config/**", "scripts/**", ".github/workflows/notam-watch.yml"]
+  schedule:
+    - cron: "7,37 * * * *"   # every 30 minutes (UTC); GitHub may run it a few minutes late
+  workflow_dispatch:          # lets you run it by hand from the Actions tab
+    inputs:
+      test_notification:
+        description: "Also send a test notification to each of your ntfy topics"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: notam-site
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: File loose files into their folders
+        run: |
+          mkdir -p site/data config scripts tests/fixtures data
+          mv_if() { if [ -f "$1" ]; then mkdir -p "$(dirname "$2")"; mv -f "$1" "$2"; echo "moved $1 -> $2"; fi; }
+          mv_if index.html site/index.html
+          mv_if rules.json config/rules.json
+          mv_if source.json config/source.json
+          for f in notamlib.py update.py fetch_source.py test_notify.py; do mv_if "$f" "scripts/$f"; done
+          mv_if test_notam_watch.py tests/test_notam_watch.py
+          for f in briefing_1.txt briefing_2.txt; do mv_if "$f" "tests/fixtures/$f"; done
+          if [ ! -f site/data/notams.json ]; then echo '{"generated_at":null,"last_success":null,"source_ok":false,"seeded":false,"count":0,"notams":[]}' > site/data/notams.json; fi
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install SOAP client
+        run: pip install zeep
+
+      - name: Fetch NOTAMs from NAIPS
+        id: fetch
+        continue-on-error: true
+        env:
+          NAIPS_USER: ${{ secrets.NAIPS_USER }}
+          NAIPS_PASS: ${{ secrets.NAIPS_PASS }}
+        run: python3 scripts/fetch_source.py --out out/briefing.txt
+
+      - name: Update data and send alerts
+        env:
+          NTFY_TOPIC_FIREWORKS: ${{ secrets.NTFY_TOPIC_FIREWORKS }}
+          NTFY_TOPIC_MILITARY: ${{ secrets.NTFY_TOPIC_MILITARY }}
+          NTFY_TOPIC_HEALTH: ${{ secrets.NTFY_TOPIC_HEALTH }}
+          FETCH_OUTCOME: ${{ steps.fetch.outcome }}
+        run: |
+          if [ "$FETCH_OUTCOME" = "success" ]; then
+            python3 scripts/update.py --raw out/briefing.txt
+          else
+            python3 scripts/update.py --fetch-failed --detail "The fetch step failed. Check the Actions log."
+          fi
+
+      - name: Send test notifications
+        if: ${{ inputs.test_notification }}
+        env:
+          NTFY_TOPIC_FIREWORKS: ${{ secrets.NTFY_TOPIC_FIREWORKS }}
+          NTFY_TOPIC_MILITARY: ${{ secrets.NTFY_TOPIC_MILITARY }}
+          NTFY_TOPIC_HEALTH: ${{ secrets.NTFY_TOPIC_HEALTH }}
+        run: python3 scripts/test_notify.py
+
+      - name: Save results
+        run: |
+          git config user.name "data-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet || (git commit -m "Update NOTAM data" && git pull --rebase && git push)
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: update
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
