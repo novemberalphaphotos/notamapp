@@ -1,0 +1,40 @@
+name: Probe NAIPS (diagnose only)
+
+on:
+  workflow_dispatch:
+    inputs:
+      show_sample:
+        description: "Also print the first 1500 characters of the response in the (public) log"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: File loose files into their folders
+        run: |
+          mkdir -p site/data config scripts tests/fixtures data
+          mv_if() { if [ -f "$1" ]; then mkdir -p "$(dirname "$2")"; mv -f "$1" "$2"; echo "moved $1 -> $2"; fi; }
+          mv_if index.html site/index.html
+          mv_if rules.json config/rules.json
+          mv_if source.json config/source.json
+          for f in notamlib.py update.py fetch_source.py test_notify.py; do mv_if "$f" "scripts/$f"; done
+          mv_if test_notam_watch.py tests/test_notam_watch.py
+          for f in briefing_1.txt briefing_2.txt; do mv_if "$f" "tests/fixtures/$f"; done
+          if [ ! -f site/data/notams.json ]; then echo '{"generated_at":null,"last_success":null,"source_ok":false,"seeded":false,"count":0,"notams":[]}' > site/data/notams.json; fi
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install zeep
+      - name: Probe
+        env:
+          NAIPS_USER: ${{ secrets.NAIPS_USER }}
+          NAIPS_PASS: ${{ secrets.NAIPS_PASS }}
+          PROBE_SAMPLE: ${{ inputs.show_sample && '1' || '' }}
+        run: python3 scripts/fetch_source.py --probe
