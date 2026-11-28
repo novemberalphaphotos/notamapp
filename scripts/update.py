@@ -21,9 +21,6 @@ import notamlib as L  # noqa: E402
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FAILS_BEFORE_HEALTH_ALERT = 3
 RETRY_WINDOW_HOURS = 48   # un-alerted matches older than this are never alerted (e.g. after a rules edit)
-KEEP_DAYS_AFTER_END = 30
-KEEP_DAYS_UNSEEN = 45
-KEEP_DAYS_UNSEEN_PERM = 14
 
 
 def empty_state():
@@ -117,10 +114,12 @@ def run_update(raw_text, state, cfg, now, send=send_ntfy, env=None):
     rules = L.compile_rules(cfg)
     rule_by_id = {r['id']: r for r in rules}
     allowed_firs = set(cfg.get('firs', []))
+    prefixes = tuple(cfg.get('keep_fir_prefixes', []))
 
     parsed = L.parse_briefing(raw_text)
     if allowed_firs:
-        parsed = [p for p in parsed if p['fir'] in allowed_firs or p['fir'] is None]
+        parsed = [p for p in parsed if p['fir'] is None or p['fir'] in allowed_firs
+                  or (prefixes and p['fir'].startswith(prefixes))]   # aerodrome NOTAMs may name another Australian FIR code
     if not parsed:
         raise ValueError('briefing contained no recognisable NOTAMs')
 
@@ -158,8 +157,11 @@ def run_update(raw_text, state, cfg, now, send=send_ntfy, env=None):
     for p in parsed:
         rec = notams[p['key']]
         t = L.classify(rec, rules)
-        if t == 'other' and rec['kind'] in ('R', 'C') and rec.get('ref') in notams:
-            t = notams[rec['ref']].get('type', 'other')
+        if t == 'other':
+            t = L.categorize(rec, cfg.get('categories'))
+        ref_rec = notams.get(rec.get('ref')) if rec['kind'] in ('R', 'C') else None
+        if ref_rec and t not in rule_by_id and (t == 'other' or ref_rec.get('type') in rule_by_id):
+            t = ref_rec.get('type', t)      # a cancel/replace of a fireworks/military NOTAM counts as one
         rec['type'] = t
 
     # alerts
@@ -214,20 +216,19 @@ def run_update(raw_text, state, cfg, now, send=send_ntfy, env=None):
                      f'{n - cap} further matching NOTAMs arrived in one run. Open the site to see them.',
                      tags='bell')
 
-    # retention
-    for key in list(notams):
-        rec = notams[key]
-        end = L.parse_iso(rec.get('end'))
-        seen = L.parse_iso(rec.get('last_seen')) or now
-        unseen = (now - seen).days
-        if end and (now - end).days > KEEP_DAYS_AFTER_END:
-            del notams[key]
-        elif unseen > (KEEP_DAYS_UNSEEN_PERM if rec.get('perm') else KEEP_DAYS_UNSEEN):
-            del notams[key]
-    live_ids = set(notams)
-    for old_id in list(superseded):
-        if old_id not in live_ids and superseded[old_id]['by'] not in live_ids:
-            del superseded[old_id]
+    # retention: keep everything unless keep_days_after_end is set in rules.json
+    keep = cfg.get('keep_days_after_end')
+    if keep is not None:
+        for key in list(notams):
+            rec = notams[key]
+            end = L.parse_iso(rec.get('end'))
+            seen = L.parse_iso(rec.get('last_seen')) or now
+            if (end and (now - end).days > keep) or (now - seen).days > keep + 15:
+                del notams[key]
+        live_ids = set(notams)
+        for old_id in list(superseded):
+            if old_id not in live_ids and superseded[old_id]['by'] not in live_ids:
+                del superseded[old_id]
 
     state['last_success'] = now_iso
     return state, summary
@@ -250,20 +251,48 @@ def health_step(state, ok, now, send=send_ntfy, env=None, detail=''):
             h['alerted'] = True
 
 
-def build_public(state, now):
-    items = []
+def _public(rec):
+    return {k: v for k, v in rec.items() if k != 'alerted'}
+
+
+def _is_old(rec, now, days):
+    st = L.compute_state(rec, now)
+    if st not in ('expired', 'replaced', 'cancelled'):
+        return False
+    ref = L.parse_iso(rec.get('end')) or L.parse_iso(rec.get('last_seen')) or now
+    return (now - ref).days > days
+
+
+def build_public(state, now, cfg=None):
+    """Returns (main_dict, {year: archive_dict}). Recent/active NOTAMs go in the main file;
+    long-finished ones go into one archive file per year so the page stays quick."""
+    cfg = cfg or {}
+    days = int(cfg.get('archive_after_days', 30))
+    recent, archives = [], {}
     for rec in state['notams'].values():
-        pub = {k: v for k, v in rec.items() if k not in ('alerted',)}
-        items.append(pub)
-    items.sort(key=lambda r: (r.get('start') or '', r['id']))
-    return {
+        if _is_old(rec, now, days):
+            ref = L.parse_iso(rec.get('end')) or L.parse_iso(rec.get('last_seen')) or now
+            archives.setdefault(str(ref.year), []).append(_public(rec))
+        else:
+            recent.append(_public(rec))
+    recent.sort(key=lambda r: (r.get('start') or '', r['id']))
+    for lst in archives.values():
+        lst.sort(key=lambda r: (r.get('start') or '', r['id']))
+    types = [[r['id'], r['label']] for r in cfg.get('rules', [])] + \
+            [[c['id'], c['label']] for c in cfg.get('categories', [])] + [['other', 'Other']]
+    main = {
         'generated_at': L.iso(now),
         'last_success': state.get('last_success'),
         'source_ok': state['health']['fails'] == 0,
         'seeded': state['seeded'],
-        'count': len(items),
-        'notams': items,
+        'count': len(recent),
+        'types': types,
+        'archive_years': sorted(archives),
+        'archive_count': sum(len(v) for v in archives.values()),
+        'notams': recent,
     }
+    arch = {y: {'year': y, 'count': len(v), 'notams': v} for y, v in archives.items()}
+    return main, arch
 
 
 def main():
@@ -299,7 +328,11 @@ def main():
             print(f'parse problem: {e}', file=sys.stderr)
     health_step(state, ok, now, detail=detail)
     save_json(args.state, state)
-    save_json(args.out, build_public(state, now))
+    main_pub, arch = build_public(state, now, cfg)
+    save_json(args.out, main_pub)
+    outdir = os.path.dirname(args.out)
+    for year, obj in arch.items():
+        save_json(os.path.join(outdir, f'archive-{year}.json'), obj)
     return 0
 
 

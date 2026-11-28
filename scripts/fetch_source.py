@@ -17,6 +17,7 @@ import json
 import os
 import shutil
 import sys
+import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import notamlib as L  # noqa: E402
@@ -78,6 +79,40 @@ def extract_text(resp):
     return str(resp)
 
 
+def collect(call_fn, cfg, sleep=time.sleep):
+    """FIR briefing first (must work), then every aerodrome in small batches.
+    A batch that errors is split in half until the single bad code is found and skipped."""
+    parts = [call_fn(cfg['loc'])]
+    fir = set(cfg['loc'])
+    codes = [c for c in cfg.get('aerodromes', []) if c not in fir]
+    size = max(1, int(cfg.get('chunk_size', 10)))
+    pause = float(cfg.get('pause_seconds', 1.0))
+    limit = int(cfg.get('max_rejected_codes', 15))
+    rejected, good = [], [0]
+
+    def go(chunk):
+        if len(rejected) > limit:
+            return
+        try:
+            parts.append(call_fn(chunk))
+            good[0] += len(chunk)
+        except Exception:
+            if len(chunk) == 1:
+                rejected.append(chunk[0])
+                return
+            mid = len(chunk) // 2
+            go(chunk[:mid])
+            go(chunk[mid:])
+
+    for i in range(0, len(codes), size):
+        go(codes[i:i + size])
+        sleep(pause)
+        if len(rejected) > limit:
+            break
+    stats = {'aerodromes_ok': good[0], 'rejected': rejected, 'aborted': len(rejected) > limit}
+    return '\n'.join(parts), stats
+
+
 def scrub(s):
     """Remove credentials from any message before it reaches the logs."""
     for key in ('NAIPS_USER', 'NAIPS_PASS'):
@@ -129,7 +164,9 @@ def main():
     creds()
     try:
         client = make_client(cfg)
-        text = call(client, cfg, cfg['loc'])
+        text, stats = collect(lambda loc: call(client, cfg, loc), cfg)
+        print(f"aerodromes ok: {stats['aerodromes_ok']}, rejected: {stats['rejected'] or 'none'}"
+              + (' (stopped early: too many rejected codes)' if stats['aborted'] else ''))
     except SystemExit:
         raise
     except Exception as e:

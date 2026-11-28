@@ -58,11 +58,21 @@ class ParserTests(unittest.TestCase):
         t = {r['id']: L.classify(r, rules) for r in L.parse_briefing(raw('briefing_1.txt') + raw('briefing_2.txt'))}
         self.assertEqual(t['A0101/26'], 'fireworks')
         self.assertEqual(t['A0102/26'], 'military')
-        self.assertEqual(t['A0103/26'], 'other')
         self.assertEqual(t['A0104/26'], 'fireworks')
-        self.assertEqual(t['A0105/26'], 'other')
         self.assertEqual(t['A0106/26'], 'military')
         self.assertEqual(t['A0108/26'], 'military')
+
+    def test_categories_from_qcode(self):
+        cats = CFG['categories']
+        mk = lambda q: {'qcode': q}
+        self.assertEqual(L.categorize(mk('QMRLC'), cats), 'aerodrome')
+        self.assertEqual(L.categorize(mk('QNVAS'), cats), 'navaids')
+        self.assertEqual(L.categorize(mk('QRTCA'), cats), 'airspace')
+        self.assertEqual(L.categorize(mk('QOBCE'), cats), 'obstacles')
+        self.assertEqual(L.categorize(mk('QPICH'), cats), 'procedures')
+        self.assertEqual(L.categorize(mk('QWULW'), cats), 'warnings')
+        self.assertEqual(L.categorize(mk('QXXXX'), cats), 'other')
+        self.assertEqual(L.categorize({'qcode': None}, cats), 'other')
 
     def test_keyword_needs_whole_word(self):
         rules = L.compile_rules(CFG)
@@ -196,15 +206,103 @@ class LifecycleTests(unittest.TestCase):
     def test_public_output_has_no_alert_bookkeeping(self):
         st = U.empty_state()
         st, _ = U.run_update(raw('briefing_1.txt'), st, CFG, NOW, send=Recorder(), env=ENV)
-        pub = U.build_public(st, NOW)
+        pub, _ = U.build_public(st, NOW, CFG)
         self.assertEqual(pub['count'], 6)
         self.assertNotIn('alerted', pub['notams'][0])
         blob = json.dumps(pub)
         for secret in ENV.values():
             self.assertNotIn(secret, blob)
 
+    def test_categories_do_not_alert_and_types_are_in_output(self):
+        st = U.empty_state()
+        st, _ = U.run_update(raw('briefing_1.txt'), st, CFG, NOW, send=Recorder(), env=ENV)
+        self.assertEqual(st['notams']['A0103/26']['type'], 'aerodrome')
+        self.assertEqual(st['notams']['A0105/26']['type'], 'navaids')
+        rec = Recorder()
+        extra = raw('briefing_2.txt') + '\nA0130/26 NOTAMN\nQ) YMMM/QMRLC/IV/NBO/A/000/999/3400S15100E005\nA) YSSY B) 2611122000 C) 2611300000\nE) RWY 16R CLOSED.\n'
+        st, sent = U.run_update(extra, st, CFG, NOW, send=rec, env=ENV)
+        self.assertNotIn('A0130/26', [i for _, i in sent])
+        pub, _ = U.build_public(st, NOW, CFG)
+        ids = [t[0] for t in pub['types']]
+        self.assertEqual(ids[:2], ['fireworks', 'military'])
+        self.assertIn('aerodrome', ids)
+        self.assertEqual(ids[-1], 'other')
+
+    def test_keep_forever_and_archive_split(self):
+        st = U.empty_state()
+        st, _ = U.run_update(raw('briefing_1.txt'), st, CFG, NOW, send=Recorder(), env=ENV)
+        later = NOW + dt.timedelta(days=400)        # years later: nothing is deleted
+        st, _ = U.run_update(raw('briefing_2.txt'), st, CFG, later, send=Recorder(), env=ENV)
+        self.assertIn('A0103/26', st['notams'])
+        self.assertIn('A0106/26', st['notams'])
+        pub, arch = U.build_public(st, later, CFG)
+        self.assertEqual(pub['archive_count'], sum(a['count'] for a in arch.values()))
+        self.assertIn('A0103/26', [r['id'] for a in arch.values() for r in a['notams']])  # ended long ago
+        self.assertNotIn('A0103/26', [r['id'] for r in pub['notams']])
+        self.assertIn('A0105/26', [r['id'] for r in pub['notams']])   # PERM stays in the main file
+        self.assertEqual(sorted(arch), pub['archive_years'])
+        self.assertEqual(pub['count'] + pub['archive_count'], len(st['notams']))
+
+    def test_keep_days_prunes_when_configured(self):
+        cfg = copy.deepcopy(CFG); cfg['keep_days_after_end'] = 30
+        st = U.empty_state()
+        st, _ = U.run_update(raw('briefing_1.txt'), st, cfg, NOW, send=Recorder(), env=ENV)
+        st, _ = U.run_update(raw('briefing_2.txt'), st, cfg, NOW + dt.timedelta(days=400), send=Recorder(), env=ENV)
+        self.assertNotIn('A0103/26', st['notams'])
+
     def test_ntfy_title_is_ascii(self):
         self.assertEqual(U.ascii_only('Fireworks – test'), 'Fireworks ? test')
+
+
+class FetchCollectTests(unittest.TestCase):
+    def setUp(self):
+        sys.path.insert(0, os.path.join(ROOT, 'scripts'))
+        import fetch_source as F
+        self.F = F
+        self.cfg = {'loc': ['YMMM', 'YBBB'], 'aerodromes': ['YSSY', 'YMML', 'YZZZ', 'YBBN', 'YPPH', 'YPAD'],
+                    'chunk_size': 3, 'pause_seconds': 0, 'max_rejected_codes': 5}
+
+    def test_bad_code_is_isolated_and_rest_kept(self):
+        calls = []
+
+        def fake(loc):
+            calls.append(list(loc))
+            if 'YZZZ' in loc:
+                raise RuntimeError('unknown location')
+            return 'TEXT ' + ','.join(loc)
+        text, stats = self.F.collect(fake, self.cfg, sleep=lambda s: None)
+        self.assertEqual(stats['rejected'], ['YZZZ'])
+        self.assertEqual(stats['aerodromes_ok'], 5)
+        for code in ('YMMM', 'YSSY', 'YMML', 'YBBN', 'YPPH', 'YPAD'):
+            self.assertIn(code, text)
+        self.assertFalse(stats['aborted'])
+
+    def test_fir_failure_is_fatal(self):
+        def fake(loc):
+            raise RuntimeError('login failed')
+        with self.assertRaises(RuntimeError):
+            self.F.collect(fake, self.cfg, sleep=lambda s: None)
+
+    def test_gives_up_when_everything_fails(self):
+        n = [0]
+
+        def fake(loc):
+            n[0] += 1
+            if n[0] == 1:
+                return 'FIR TEXT'
+            raise RuntimeError('service down')
+        cfg = dict(self.cfg, aerodromes=['Y%03d' % i for i in range(60)], max_rejected_codes=4)
+        text, stats = self.F.collect(fake, cfg, sleep=lambda s: None)
+        self.assertTrue(stats['aborted'])
+        self.assertLess(n[0], 60)             # did not hammer the service for every code
+
+    def test_other_australian_fir_code_kept(self):
+        st = U.empty_state()
+        raw_text = raw('briefing_1.txt') + '\nA0140/26 NOTAMN\nQ) YBBB/QMRLC/IV/NBO/A/000/999/1200S13000E005\nA) YPDN B) 2611122000 C) 2611300000\nE) TWY A CLOSED.\n' + \
+                   '\nA0141/26 NOTAMN\nQ) NZZC/QMRLC/IV/NBO/A/000/999/3600S17400E005\nA) NZAA B) 2611122000 C) 2611300000\nE) NOT AUSTRALIAN.\n'
+        st, _ = U.run_update(raw_text, st, CFG, NOW, send=Recorder(), env=ENV)
+        self.assertIn('A0140/26', st['notams'])
+        self.assertNotIn('A0141/26', st['notams'])
 
 
 if __name__ == '__main__':

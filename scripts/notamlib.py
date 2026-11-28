@@ -81,7 +81,7 @@ def parse_block(m, block):
     q = fields.get('Q', '')
     if q:
         parts = [p.strip() for p in q.split('/')]
-        if parts and re.fullmatch(r'Y[A-Z]{3}', parts[0]):
+        if parts and re.fullmatch(r'[A-Z]{4}', parts[0]):
             fir = parts[0]
         if len(parts) > 1:
             qcode = parts[1]
@@ -161,3 +161,13 @@ def compute_state(rec, now):
     if start and now < start:
         return 'upcoming'
     return 'active'
+
+
+def categorize(rec, categories):
+    """Broad category from the first letter of the Q-code subject (e.g. QMRLC -> 'M' -> aerodrome)."""
+    q = rec.get('qcode') or ''
+    letter = q[1:2].upper() if len(q) > 1 else ''
+    for c in categories or []:
+        if letter and letter in c.get('q_letters', ''):
+            return c['id']
+    return 'other'

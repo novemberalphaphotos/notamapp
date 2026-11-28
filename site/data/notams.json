@@ -1,8 +1,48 @@
 {
+ "archive_count": 0,
+ "archive_years": [],
  "count": 0,
- "generated_at": "2026-11-28T10:30Z",
+ "generated_at": "2026-11-28T11:27Z",
  "last_success": null,
  "notams": [],
  "seeded": false,
- "source_ok": false
+ "source_ok": false,
+ "types": [
+  [
+   "fireworks",
+   "Fireworks"
+  ],
+  [
+   "military",
+   "Military"
+  ],
+  [
+   "aerodrome",
+   "Aerodrome & runways"
+  ],
+  [
+   "airspace",
+   "Airspace"
+  ],
+  [
+   "navaids",
+   "Navaids & comms"
+  ],
+  [
+   "procedures",
+   "Procedures & ATS"
+  ],
+  [
+   "obstacles",
+   "Obstacles"
+  ],
+  [
+   "warnings",
+   "Warnings & activities"
+  ],
+  [
+   "other",
+   "Other"
+  ]
+ ]
 }
