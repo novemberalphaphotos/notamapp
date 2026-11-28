@@ -26,6 +26,15 @@ Unofficial. Not for flight planning or operational use.
 
 Topic names are effectively passwords on ntfy.sh: make them long and random, and do not reuse your bushfire topic.
 
+## What is kept
+Every NOTAM seen is recorded permanently (set `keep_days_after_end` in `config/rules.json` to a number of days if you ever want pruning).
+Recent and active NOTAMs live in `site/data/notams.json`. NOTAMs that ended more than 30 days ago move into `site/data/archive-YEAR.json`
+(one file per year); the page loads them only when you tick **+ Archive**.
+
+## Types
+Fireworks and Military come from the keyword rules (and are the only ones that send ntfy alerts). Everything else is grouped by the Q-code
+letter into Aerodrome & runways, Airspace, Navaids & comms, Procedures & ATS, Obstacles, Warnings & activities, or Other. Edit `categories` in `config/rules.json` to change the groups.
+
 ## Changing the rules
 Edit `config/rules.json` on GitHub (pencil icon). Keywords are matched as whole words, case-insensitive. Add a rule by copying a block and adding a matching `NTFY_TOPIC_...` secret and a line for it in the workflow's "Update data" step.
 

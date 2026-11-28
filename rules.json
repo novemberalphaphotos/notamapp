@@ -1,0 +1,90 @@
+{
+  "_help": "Edit this file on GitHub to change what counts as Fireworks / Military. Rules are checked top to bottom; the first match decides the NOTAM type. Anything that matches no rule is type 'other'. Each rule sends alerts to the ntfy topic held in the GitHub secret named in 'topic_secret'. 'categories' give every other NOTAM a broad type from its Q-code (the letter after Q in the Q) line). They never send alerts; only the rules above do. 'keep_days_after_end': null keeps every NOTAM forever; set a number of days to prune old ones instead. Archive: NOTAMs that ended more than archive_after_days ago move to site/data/archive-YEAR.json so the page stays fast.",
+  "firs": [
+    "YMMM",
+    "YBBB"
+  ],
+  "alert_kinds": [
+    "N",
+    "R"
+  ],
+  "max_alerts_per_rule_per_run": 10,
+  "rules": [
+    {
+      "id": "fireworks",
+      "label": "Fireworks",
+      "topic_secret": "NTFY_TOPIC_FIREWORKS",
+      "keywords": [
+        "FIREWORKS?",
+        "PYROTECHNICS?",
+        "FIRE WORKS",
+        "FIREWORK DISPLAY"
+      ],
+      "q_subjects": []
+    },
+    {
+      "id": "military",
+      "label": "Military",
+      "topic_secret": "NTFY_TOPIC_MILITARY",
+      "keywords": [
+        "MIL",
+        "MILITARY",
+        "RAAF",
+        "ARMY",
+        "NAVY",
+        "NAVAL",
+        "RAN",
+        "ADF",
+        "EXERCISE",
+        "LIVE FIRING",
+        "LIVE FIRE",
+        "GUNNERY",
+        "WEAPONS?",
+        "MISSILE",
+        "DANGER AREA",
+        "RESTRICTED AREA"
+      ],
+      "q_subjects": [
+        "WE",
+        "WM"
+      ]
+    }
+  ],
+  "keep_days_after_end": null,
+  "archive_after_days": 30,
+  "categories": [
+    {
+      "id": "aerodrome",
+      "label": "Aerodrome & runways",
+      "q_letters": "MLF"
+    },
+    {
+      "id": "airspace",
+      "label": "Airspace",
+      "q_letters": "AR"
+    },
+    {
+      "id": "navaids",
+      "label": "Navaids & comms",
+      "q_letters": "NIGC"
+    },
+    {
+      "id": "procedures",
+      "label": "Procedures & ATS",
+      "q_letters": "PS"
+    },
+    {
+      "id": "obstacles",
+      "label": "Obstacles",
+      "q_letters": "O"
+    },
+    {
+      "id": "warnings",
+      "label": "Warnings & activities",
+      "q_letters": "W"
+    }
+  ],
+  "keep_fir_prefixes": [
+    "Y"
+  ]
+}
